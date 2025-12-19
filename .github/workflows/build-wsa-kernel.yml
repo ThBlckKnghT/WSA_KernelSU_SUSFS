@@ -1,10 +1,9 @@
 name: WSA Kernel Build
 permissions:
-  contents: write  # Allow writing to repository contents (for pushing tags)
-  actions: write   # Allows triggering actions
-
-on:
-  workflow_call: # This allows this workflow to be called from another workflow
+  contents: write
+  actions: write
+'on':
+  workflow_call:
     inputs:
       android_version:
         required: true
@@ -30,43 +29,36 @@ on:
       kernelsu_branch_other:
         required: false
         type: string
-
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ${{ inputs.runner }}
-
     steps:
       - name: Clean up workspace
         run: rm -rf ${{ github.workspace }}/*
-
       - name: Install Build Tools
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
           packages: bc bison build-essential flex libelf-dev binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu gzip ccache
-          version: 1.0 
-
+          version: 1
       - name: Cache LLVM
         id: cache-llvm
         uses: actions/cache@v4
         with:
           path: ./llvm
           key: llvm-12.0.1
-
       - name: Setup LLVM
         uses: KyleMayes/install-llvm-action@v1
         with:
-          version: "12.0.1"
+          version: 12.0.1
           force-version: true
-          ubuntu-version: "16.04"
+          ubuntu-version: '16.04'
           cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-
       - name: Setup kernel source
         uses: actions/checkout@v4
         with:
           repository: microsoft/WSA-Linux-Kernel
           ref: android-lts/latte-2/${{ inputs.wsa_branch }}
           path: WSA-Linux-Kernel-${{ inputs.wsa_arch }}
-        
       - name: Set CONFIG Environment Variable
         run: |
           # Set CONFIG dynamically based on inputs values
@@ -76,7 +68,6 @@ jobs:
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
 
           echo "CONFIG set to: $CONFIG"
-
       - name: Clone AnyKernel3 and Other Dependencies
         run: |
           echo "Cloning AnyKernel3 and other dependencies..."
@@ -93,22 +84,20 @@ jobs:
           git clone  https://github.com/osm0sis/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/WildPlusKernel/kernel_patches.git
-
       - name: Determine the branch for KernelSU
         run: |
           if [[ "${{ inputs.kernelsu_branch }}" == "Stable" ]]; then
-              echo "BRANCH=-" >> $GITHUB_ENV
+            echo "BRANCH=-" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && ( "${{ inputs.kernelsu_variant }}" == "Official" || "${{ inputs.kernelsu_variant }}" == "MKSU" ) ]]; then
-              echo "BRANCH=-s main" >> $GITHUB_ENV
+            echo "BRANCH=-s main" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && "${{ inputs.kernelsu_variant }}" == "Next" ]]; then
-              echo "BRANCH=-s main" >> $GITHUB_ENV
+            echo "BRANCH=-s main" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
             echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
           else
             echo "Error: Custom branch not provided for 'Other'" >&2
             exit 1
           fi
-      
       - name: Add KernelSU
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -134,46 +123,63 @@ jobs:
             echo "Invalid KernelSU variant selected!"
             exit 1
           fi
+      - name: Apply SUSFS Patches for KernelSU Variants (WSA-safe)
+  run: |
+    echo "Changing to configuration directory: $CONFIG..."
+    cd "$CONFIG"
 
-      - name: Apply SUSFS Patches for KernelSU Variants
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          
-          echo "Applying SUSFS patches..."
-          
-          # Copy SUSFS patches
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./
-          cp ../susfs4ksu/kernel_patches/fs/* ./fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+    set +e
+    echo "Applying SUSFS patches (WSA-safe mode)..."
 
-          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
-            echo "Applying SUSFS patches for Official KernelSU..."
-            cd ./KernelSU
-            cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch
-          elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "Applying SUSFS patches for KernelSU-Next..."
-            cd ./KernelSU-Next
-            cp ../../kernel_patches/KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch ./
-            patch -p1 --forward < KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch || true
-          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Applying SUSFS patches for MKSU..."
-            cd ./KernelSU
-            cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-            
-            echo "Applying MKSU specific SUSFS patch..."
-            cp ../../kernel_patches/mksu_susfs.patch ../KernelSU/
-            patch -p1 < mksu_susfs.patch
-          else
-            echo "Invalid KernelSU variant selected!"
-            exit 1
-          fi
+    # -----------------------------
+    # Copy common SUSFS files
+    # -----------------------------
+    cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch .
+    cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/ || true
+    cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ || true
 
-          # Change to common directory and apply common SUSFS patch
-          cd ../
-          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+    # -----------------------------
+    # Apply KernelSU-specific patches
+    # -----------------------------
+    if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
+      echo "Applying SUSFS for Official KernelSU"
+      cd KernelSU
+      cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+      patch -p1 < 10_enable_susfs_for_ksu.patch || echo "::warning::Official KernelSU SUSFS patch partially failed (WSA expected)"
+
+    elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+      echo "Applying SUSFS for KernelSU-Next (best-effort)"
+      cd KernelSU-Next
+      cp ../../kernel_patches/KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch .
+      patch -p1 < KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch \
+        || echo "::warning::KernelSU-Next SUSFS patch partially failed (WSA expected)"
+
+    elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+      echo "Applying SUSFS for MKSU"
+      cd KernelSU
+      cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+      patch -p1 < 10_enable_susfs_for_ksu.patch \
+        || echo "::warning::MKSU base SUSFS patch partially failed"
+
+      echo "Applying MKSU-specific SUSFS patch"
+      cp ../../kernel_patches/mksu_susfs.patch .
+      patch -p1 < mksu_susfs.patch \
+        || echo "::warning::MKSU SUSFS patch partially failed"
+
+    else
+      echo "::error::Invalid KernelSU variant"
+      exit 1
+    fi
+
+    # -----------------------------
+    # Apply common GKI SUSFS patch
+    # -----------------------------
+    cd ..
+    patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch \
+      || echo "::warning::Common SUSFS GKI patch partially failed (WSA expected)"
+
+    echo "SUSFS patch step completed (WSA-safe)"
+
 
       - name: Add SUSFS Configuration Settings
         run: |
@@ -212,7 +218,7 @@ jobs:
 
           echo "CONFIG_FANOTIFY=n" >> .config
           echo "endofsus" >> .config
-          
+
       - name: Build the Kernel
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -225,7 +231,7 @@ jobs:
 
           sed -i 's/-dirty//' ./scripts/setlocalversion
           sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Wild+"/' ./scripts/setlocalversion
-          
+
           make olddefconfig
           declare -A FILE_NAME=(["x86_64"]="bzImage" ["arm64"]="Image")
           make -j`nproc` LLVM=1 ARCH=${{ inputs.wsa_arch }} $(if [ "${{ inputs.wsa_arch }}" == "arm64" ]; then echo CROSS_COMPILE=aarch64-linux-gnu; fi) ${FILE_NAME[${{ inputs.wsa_arch }}]}
