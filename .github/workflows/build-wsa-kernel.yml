@@ -124,62 +124,58 @@ jobs:
             exit 1
           fi
       - name: Apply SUSFS Patches for KernelSU Variants (WSA-safe)
-  run: |
-    echo "Changing to configuration directory: $CONFIG..."
-    cd "$CONFIG"
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
 
-    set +e
-    echo "Applying SUSFS patches (WSA-safe mode)..."
+          set +e
+          echo "Applying SUSFS patches (WSA-safe mode)..."
 
-    # -----------------------------
-    # Copy common SUSFS files
-    # -----------------------------
-    cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch .
-    cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/ || true
-    cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ || true
+          # -----------------------------
+          # Copy common SUSFS files
+          # -----------------------------
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch .
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/ || true
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ || true
 
-    # -----------------------------
-    # Apply KernelSU-specific patches
-    # -----------------------------
-    if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
-      echo "Applying SUSFS for Official KernelSU"
-      cd KernelSU
-      cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
-      patch -p1 < 10_enable_susfs_for_ksu.patch || echo "::warning::Official KernelSU SUSFS patch partially failed (WSA expected)"
+          # -----------------------------
+          # Apply KernelSU-specific patches
+          # -----------------------------
+          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
+            echo "Applying SUSFS for Official KernelSU"
+            cd KernelSU
+            cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+            patch -p1 < 10_enable_susfs_for_ksu.patch || echo "::warning::Official KernelSU SUSFS patch partially failed (WSA expected)"
 
-    elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-      echo "Applying SUSFS for KernelSU-Next (best-effort)"
-      cd KernelSU-Next
-      cp ../../kernel_patches/KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch .
-      patch -p1 < KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch \
-        || echo "::warning::KernelSU-Next SUSFS patch partially failed (WSA expected)"
+          elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+            echo "Applying SUSFS for KernelSU-Next (best-effort)"
+            cd KernelSU-Next
+            cp ../../kernel_patches/KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch .
+            patch -p1 < KernelSU-Next-Implement-SUSFS-v1.5.5-Universal.patch || echo "::warning::KernelSU-Next SUSFS patch partially failed (WSA expected)"
 
-    elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-      echo "Applying SUSFS for MKSU"
-      cd KernelSU
-      cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
-      patch -p1 < 10_enable_susfs_for_ksu.patch \
-        || echo "::warning::MKSU base SUSFS patch partially failed"
+          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+            echo "Applying SUSFS for MKSU"
+            cd KernelSU
+            cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+            patch -p1 < 10_enable_susfs_for_ksu.patch || echo "::warning::MKSU base SUSFS patch partially failed"
 
-      echo "Applying MKSU-specific SUSFS patch"
-      cp ../../kernel_patches/mksu_susfs.patch .
-      patch -p1 < mksu_susfs.patch \
-        || echo "::warning::MKSU SUSFS patch partially failed"
+            echo "Applying MKSU-specific SUSFS patch"
+            cp ../../kernel_patches/mksu_susfs.patch .
+            patch -p1 < mksu_susfs.patch || echo "::warning::MKSU SUSFS patch partially failed"
 
-    else
-      echo "::error::Invalid KernelSU variant"
-      exit 1
-    fi
+          else
+            echo "::error::Invalid KernelSU variant"
+            exit 1
+          fi
 
-    # -----------------------------
-    # Apply common GKI SUSFS patch
-    # -----------------------------
-    cd ..
-    patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch \
-      || echo "::warning::Common SUSFS GKI patch partially failed (WSA expected)"
+          # -----------------------------
+          # Apply common GKI SUSFS patch
+          # -----------------------------
+          cd ..
+          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || \
+            echo "::warning::Common SUSFS GKI patch partially failed (WSA expected)"
 
-    echo "SUSFS patch step completed (WSA-safe)"
-
+          echo "SUSFS patch step completed (WSA-safe)"
 
       - name: Add SUSFS Configuration Settings
         run: |
