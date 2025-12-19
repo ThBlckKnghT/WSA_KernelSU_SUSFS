@@ -177,6 +177,21 @@ jobs:
 
           echo "SUSFS patch step completed (WSA-safe)"
 
+     - name: Fix SUSFS WSA task_mmu compile issue
+        run: |
+          echo "Applying WSA-specific SUSFS fix (task_mmu.c)..."
+          cd "$CONFIG"
+
+          FILE="fs/proc/task_mmu.c"
+
+          if grep -q "goto show_pad" "$FILE"; then
+            echo "Found dangling goto show_pad, fixing..."
+            sed -i 's/goto show_pad;/goto out;/' "$FILE"
+          else
+            echo "No show_pad issue detected"
+          fi
+
+
       - name: Add SUSFS Configuration Settings
         run: |
           echo "Changing to configuration directory: $CONFIG..."
